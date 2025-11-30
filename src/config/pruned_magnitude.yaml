@@ -1,0 +1,42 @@
+# DGraphFin Magnitude Pruning Configuration
+# This config trains a GraphSAGE model with magnitude-based weight pruning
+# Prunes weights with smallest absolute values to create sparse, efficient models
+
+# Data and output settings
+data_root: "data/DGraphFin2"                         # Path to processed DGraphFin2 dataset
+output_dir: "experiments/results/pruned_magnitude"   # Directory to save training results
+
+# Model architecture settings
+model_variant: "pruned_magnitude"                    # Model type: magnitude-based pruning (removes small weights)
+sampling: "heuristic"                                # Biased sampling toward fraud nodes (better for imbalanced data)
+sparsity: 0.9                                        # Target sparsity level (0.9 = 90% weights removed, keep 10%)
+
+# Training hyperparameters (adjusted for pruning)
+train:
+  epochs: 20                                         # Number of training epochs (may need more for pruned models)
+  lr: 0.001                                          # Learning rate (same as baseline)
+  weight_decay: 0.00005                              # L2 regularization (helps with pruning)
+  hidden_channels: 128                               # Hidden dimension (same as baseline)
+  num_layers: 2                                      # GraphSAGE layers (same as baseline)
+  dropout: 0.2                                       # Dropout rate (same as baseline)
+
+  # Data loading settings - using heuristic sampling for better fraud detection
+  batch_size: 2048                                   # Training batch size (same as baseline)
+  num_neighbors: [25, 25]                            # Neighbors per layer (same as baseline)
+  num_hops: 2                                        # Hops for heuristic sampling (same as baseline)
+
+  # Negative sampling ratios for heuristic sampling (balances fraud/non-fraud exposure)
+  k_pos: 25                                          # Fraud neighbors to sample (positive class)
+  k_neg: 5                                           # Normal neighbors to sample (negative class)
+
+  # Device settings - adjust based on your hardware:
+  # - "mps" for Apple Silicon MacBooks (fastest on M1/M2/M3 chips)
+  # - "cuda" for NVIDIA GPUs (use in Colab or desktop with CUDA)
+  # - "cpu" for CPU-only training (slowest, use as fallback)
+  # Note: Pruning adds some CPU overhead but training is still GPU-accelerated
+  device: "mps"
+
+# Random seeds for reproducible results
+seeds: [1, 2, 3, 4, 5]
+
+

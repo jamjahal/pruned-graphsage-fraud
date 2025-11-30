@@ -1,0 +1,40 @@
+# DGraphFin Baseline Training Configuration
+# This config trains a standard GraphSAGE model without pruning
+
+# Data and output settings
+data_root: "data/DGraphFin2"                    # Path to processed DGraphFin2 dataset
+output_dir: "experiments/results/baseline"     # Directory to save training results and model checkpoints
+
+# Model architecture settings
+model_variant: "baseline"                       # Model type: baseline (no pruning), pruned_magnitude, pruned_synflow
+sampling: "uniform"                             # Neighbor sampling strategy: uniform (random) or heuristic (biased toward fraud nodes)
+sparsity: 0.0                                   # Model sparsity level (0.0 = no pruning, higher = more weights removed)
+
+# Training hyperparameters
+train:
+  epochs: 20                                    # Number of training epochs (10-50 typical range)
+  lr: 0.001                                     # Learning rate (0.001-0.01 typical, higher for faster convergence)
+  weight_decay: 0.00005                         # L2 regularization strength (5e-5 to 1e-3 typical)
+  hidden_channels: 128                          # Hidden layer dimension (64-256 typical, affects model capacity)
+  num_layers: 2                                 # Number of GraphSAGE layers (1-3 typical for most graphs)
+  dropout: 0.2                                  # Dropout probability (0.0-0.5, prevents overfitting)
+
+  # Data loading settings
+  batch_size: 2048                              # Training batch size (1024-4096 typical, reduce if OOM)
+  num_neighbors: [25, 25]                       # Neighbors sampled per layer [layer1, layer2] (10-50 typical)
+  num_hops: 2                                   # Number of hops for heuristic sampling (1-3 typical)
+
+  # Negative sampling for heuristic sampling (only used when sampling="heuristic")
+  k_pos: 25                                     # Positive neighbors to sample (fraud nodes)
+  k_neg: 5                                      # Negative neighbors to sample (normal nodes)
+
+  # Device settings - adjust based on your hardware:
+  # - "mps" for Apple Silicon MacBooks (fastest on M1/M2/M3 chips)
+  # - "cuda" for NVIDIA GPUs (use in Colab or desktop with CUDA)
+  # - "cpu" for CPU-only training (slowest, use as fallback)
+  device: "mps"
+
+# Random seeds for reproducible results (train multiple runs for robust evaluation)
+seeds: [1, 2, 3, 4, 5]
+
+
