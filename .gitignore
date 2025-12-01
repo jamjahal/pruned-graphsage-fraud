@@ -47,12 +47,5 @@ checkpoints/
 wandb/
 
 data/DGraphFin/
-data/DGraphFin2/
 experiments/results/
-data/DGraphFin/
-data/DGraphFin2/
-experiments/results/
-data/DGraphFin.zip
-*.zip # Or be more specific
-data/DGraphFin.zip
 *.zip
