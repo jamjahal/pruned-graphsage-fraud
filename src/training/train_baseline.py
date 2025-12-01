@@ -17,8 +17,8 @@ from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
 import torch
+from dgl.dataloading import MultiLayerNeighborSampler, NodeDataLoader
 from torch import nn, optim
-from torch_geometric.loader import NeighborLoader
 
 from src.data.dgraph_fin import load_dgraphfin_dataset
 from src.models.graphsage import build_graphsage_for_data
@@ -30,12 +30,9 @@ from src.sampling.heuristic_sampler import HeuristicNeighborLoader
 def _detect_default_device() -> str:
     """
     Choose a sensible default device:
-    - Prefer Apple Metal (MPS) on Apple Silicon when available.
-    - Otherwise prefer CUDA if available.
-    - Fall back to CPU.
+    - Prefer CUDA if available.
+    - Fall back to CPU (DGL does not currently support MPS).
     """
-    if torch.backends.mps.is_available():
-        return "mps"
     if torch.cuda.is_available():
         return "cuda"
     return "cpu"
@@ -85,26 +82,29 @@ def compute_pos_weight(y: torch.Tensor) -> torch.Tensor:
     return torch.tensor(neg / max(pos, 1), dtype=torch.float32)
 
 
-def build_loaders(data, cfg: TrainConfig):
+def build_loaders(graph, cfg: TrainConfig, device: torch.device):
     """
-    Construct the appropriate NeighborLoader/Heuristic loader for training.
-
-    Uses the train mask to pick seed nodes, then instantiates either the built-in
-    uniform sampler or the custom heuristic sampler based on `cfg.sampling`.
+    Construct the appropriate DGL NeighborLoader / heuristic loader for training.
     """
-    train_idx = data.train_mask.nonzero(as_tuple=False).view(-1)
+    train_idx = graph.ndata["train_mask"].nonzero(as_tuple=False).view(-1)
 
     if cfg.sampling == "uniform":
-        train_loader = NeighborLoader(
-            data,
-            num_neighbors=list(cfg.num_neighbors),
+        sampler = MultiLayerNeighborSampler(list(cfg.num_neighbors))
+        dataloader_device = device if device.type == "cuda" else None
+        train_loader = NodeDataLoader(
+            graph,
+            train_idx,
+            sampler,
             batch_size=cfg.batch_size,
-            input_nodes=train_idx,
             shuffle=True,
+            drop_last=False,
+            device=dataloader_device,
+            prefetch_node_feats=["feat"],
+            prefetch_labels=["label"],
         )
     elif cfg.sampling == "heuristic":
         train_loader = HeuristicNeighborLoader(
-            data=data,
+            graph=graph,
             input_nodes=train_idx,
             batch_size=cfg.batch_size,
             num_hops=cfg.num_hops,
@@ -135,10 +135,11 @@ def train_baseline(cfg: Optional[TrainConfig] = None) -> None:
     device = torch.device(cfg.device)
 
     dataset = load_dgraphfin_dataset(root=cfg.data_root)
-    data = dataset[0].to(device)
+    graph_cpu = dataset[0]
+    graph_device = graph_cpu.to(device)
 
     model = build_graphsage_for_data(
-        data,
+        graph_device,
         hidden_channels=cfg.hidden_channels,
         num_layers=cfg.num_layers,
         dropout=cfg.dropout,
@@ -147,58 +148,66 @@ def train_baseline(cfg: Optional[TrainConfig] = None) -> None:
     # Efficiency metrics (parameters, FLOPs) for logging.
     num_params = count_parameters(model, trainable_only=True)
     approx_flops = estimate_graphsage_flops(
-        model, num_nodes=data.num_nodes, num_edges=data.num_edges
+        model, num_nodes=graph_cpu.num_nodes(), num_edges=graph_cpu.num_edges()
     )
     print(f"Model parameters (trainable): {num_params}")
     if approx_flops is not None:
         print(f"Approximate FLOPs per forward pass: {approx_flops:.3e}")
 
-    pos_weight = compute_pos_weight(data.y.to(device)).to(device)
+    labels = graph_device.ndata["label"]
+    pos_weight = compute_pos_weight(labels).to(device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
-    train_loader = build_loaders(data, cfg)
+    train_loader = build_loaders(graph_cpu, cfg, device)
 
     for epoch in range(1, cfg.epochs + 1):
         model.train()
         total_loss = 0.0
         total_examples = 0
 
-        for batch in train_loader:
-            batch = batch.to(device)
-            optimizer.zero_grad()
+        if cfg.sampling == "uniform":
+            for _, _, blocks in train_loader:
+                optimizer.zero_grad()
+                blocks = [block.to(device) for block in blocks]
+                batch_feats = blocks[0].srcdata["feat"]
+                batch_labels = blocks[-1].dstdata["label"].float()
+                logits = model(blocks, batch_feats).view(-1)
+                loss = criterion(logits, batch_labels)
+                loss.backward()
+                optimizer.step()
 
-            logits_all = model(batch.x, batch.edge_index).view(-1)
-
-            # Determine which nodes are seeds for this batch.
-            if hasattr(batch, "seed_idx"):
+                batch_size = batch_labels.size(0)
+                total_loss += loss.item() * batch_size
+                total_examples += batch_size
+        else:
+            for batch in train_loader:
+                optimizer.zero_grad()
+                subgraph = batch.graph.to(device)
+                feats = subgraph.ndata["feat"]
+                logits_all = model(subgraph, feats).view(-1)
                 seed_idx = batch.seed_idx.to(logits_all.device)
-            else:
-                # For NeighborLoader, the first `batch.batch_size` nodes are seeds.
-                seed_idx = torch.arange(batch.batch_size, device=logits_all.device)
+                targets = subgraph.ndata["label"][seed_idx].float()
+                logits = logits_all[seed_idx]
 
-            logits = logits_all[seed_idx]
-            targets = batch.y[seed_idx].float()
+                loss = criterion(logits, targets)
+                loss.backward()
+                optimizer.step()
 
-            loss = criterion(logits, targets)
-            loss.backward()
-            optimizer.step()
-
-            batch_size = targets.size(0)
-            total_loss += loss.item() * batch_size
-            total_examples += batch_size
+                batch_size = targets.size(0)
+                total_loss += loss.item() * batch_size
+                total_examples += batch_size
 
         avg_loss = total_loss / max(total_examples, 1)
         # Validation metrics using full-graph forward on the validation mask.
         model.eval()
         with torch.no_grad():
-            logits_full = model(data.x, data.edge_index).view(-1)
-            val_mask = data.val_mask
+            logits_full = model(graph_device, graph_device.ndata["feat"]).view(-1)
+            val_mask = graph_device.ndata["val_mask"]
             val_logits = logits_full[val_mask]
-            val_targets = data.y[val_mask].float()
-            val_loss = criterion(val_logits, val_targets.to(device)).item()
+            val_targets = graph_device.ndata["label"][val_mask].float()
+            val_loss = criterion(val_logits, val_targets).item()
 
-            # Convert logits to probabilities and compute metrics.
             probs = torch.sigmoid(val_logits)
             metrics = compute_binary_metrics(val_targets.cpu(), probs.cpu())
 
@@ -213,12 +222,12 @@ def train_baseline(cfg: Optional[TrainConfig] = None) -> None:
     # Final evaluation on validation and test sets.
     model.eval()
     with torch.no_grad():
-        logits_full = model(data.x, data.edge_index).view(-1)
+        logits_full = model(graph_device, graph_device.ndata["feat"]).view(-1)
 
         def _eval_mask(mask: torch.Tensor, name: str) -> None:
             mask_logits = logits_full[mask]
-            mask_targets = data.y[mask].float()
-            loss_val = criterion(mask_logits, mask_targets.to(device)).item()
+            mask_targets = graph_device.ndata["label"][mask].float()
+            loss_val = criterion(mask_logits, mask_targets).item()
             probs_val = torch.sigmoid(mask_logits)
             m = compute_binary_metrics(mask_targets.cpu(), probs_val.cpu())
             print(
@@ -227,8 +236,8 @@ def train_baseline(cfg: Optional[TrainConfig] = None) -> None:
                 f"F1: {m['f1']:.4f}"
             )
 
-        _eval_mask(data.val_mask, "Validation final")
-        _eval_mask(data.test_mask, "Test final")
+        _eval_mask(graph_device.ndata["val_mask"], "Validation final")
+        _eval_mask(graph_device.ndata["test_mask"], "Test final")
 
 
 def parse_args() -> argparse.Namespace:
@@ -288,7 +297,7 @@ def parse_args() -> argparse.Namespace:
         "--device",
         type=str,
         default=_detect_default_device(),
-        help="Torch device string (cpu, cuda, or mps). Default auto-detects.",
+        help="Torch device string (cpu or cuda). Default auto-detects.",
     )
     parser.add_argument("--seed", type=int, default=42)
 

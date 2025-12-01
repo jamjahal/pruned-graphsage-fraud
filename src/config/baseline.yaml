@@ -29,10 +29,9 @@ train:
   k_neg: 5                                      # Negative neighbors to sample (normal nodes)
 
   # Device settings - adjust based on your hardware:
-  # - "mps" for Apple Silicon MacBooks (fastest on M1/M2/M3 chips)
-  # - "cuda" for NVIDIA GPUs (use in Colab or desktop with CUDA)
-  # - "cpu" for CPU-only training (slowest, use as fallback)
-  device: "mps"
+  # - "cuda" for NVIDIA GPUs (Colab or CUDA workstations)
+  # - "cpu" for CPU-only or Apple Silicon (DGL does not support MPS yet)
+  device: "cpu"
 
 # Random seeds for reproducible results (train multiple runs for robust evaluation)
 seeds: [1, 2, 3, 4, 5]

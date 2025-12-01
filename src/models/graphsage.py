@@ -1,17 +1,18 @@
 """
 Baseline GraphSAGE model for node-level fraud / anomaly detection.
 
-This implementation uses PyTorch Geometric's `SAGEConv` layers and produces a
+This implementation uses DGL's `SAGEConv` layers and produces a
 single logit per node (for binary classification with BCEWithLogitsLoss).
 """
 
 from __future__ import annotations
 
-from typing import List
+from typing import Sequence, Union
 
+import dgl
 import torch
 from torch import nn
-from torch_geometric.nn import SAGEConv
+from dgl.nn import SAGEConv
 
 
 class GraphSAGE(nn.Module):
@@ -55,41 +56,65 @@ class GraphSAGE(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
+        """
+        Reinitialize all learnable weights/biases in the module.
+
+        Calls `reset_parameters()` on each SAGEConv layer and applies
+        Xavier/zero init to the output projection so the model starts
+        from a clean, reproducible state before training or evaluation.
+        """
         for conv in self.convs:
             conv.reset_parameters()
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
             nn.init.zeros_(self.out_proj.bias)
 
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, g: Union[dgl.DGLGraph, Sequence[dgl.DGLGraph]], x: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute node logits.
 
         Parameters
         ----------
-        x: Tensor, shape [num_nodes, in_channels]
-        edge_index: LongTensor, shape [2, num_edges]
+        g: Either a full DGLGraph or a sequence of DGL blocks (one per layer).
+        x: Node features corresponding to the graph input. For block-based
+           mini-batch training, this should be the feature tensor of
+           `blocks[0].srcdata["feat"]`.
 
         Returns
         -------
         logits: Tensor, shape [num_nodes, 1]
         """
-        for conv in self.convs:
-            x = conv(x, edge_index)
-            x = self.activation(x)
-            x = self.dropout(x)
+        if isinstance(g, (list, tuple)):
+            h = x
+            for conv, block in zip(self.convs, g):
+                h = conv(block, h)
+                h = self.activation(h)
+                h = self.dropout(h)
+        else:
+            h = x
+            for conv in self.convs:
+                h = conv(g, h)
+                h = self.activation(h)
+                h = self.dropout(h)
 
-        logits = self.out_proj(x)
+        logits = self.out_proj(h)
         return logits
 
 
 def build_graphsage_for_data(
-    data, hidden_channels: int = 128, num_layers: int = 2, dropout: float = 0.2
+    data,
+    hidden_channels: int = 128,
+    num_layers: int = 2,
+    dropout: float = 0.2,
 ) -> GraphSAGE:
     """
-    Convenience constructor that infers `in_channels` from `data.x`.
+    Convenience constructor that infers `in_channels` from graph node features.
     """
-    in_channels = data.num_node_features
+    # `data` is expected to be a DGLGraph with node features stored under 'feat'.
+    x = data.ndata["feat"]
+    in_channels = x.size(-1)
     return GraphSAGE(
         in_channels=in_channels,
         hidden_channels=hidden_channels,

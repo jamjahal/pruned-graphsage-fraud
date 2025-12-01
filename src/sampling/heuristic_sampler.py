@@ -1,53 +1,59 @@
 """
-Heuristic biased neighbor sampler for imbalanced graphs.
+Heuristic biased neighbor sampler for imbalanced graphs (DGL version).
 
 Idea:
-- For seed nodes with positive labels (anomalies), sample a larger number of
-  neighbors (K_pos) to capture rich local context.
-- For seed nodes with negative labels (normal), sample fewer neighbors (Kneg)
-  to reduce computation on the majority class.
+- Positive (fraud) seeds sample up to `k_pos` neighbors to capture richer context.
+- Negative seeds sample up to `k_neg` neighbors to keep majority class cheap.
 
-This implementation builds small subgraphs around seed nodes using Python-level
-sampling logic and returns `torch_geometric.data.Data` objects similar to those
-emitted by `NeighborLoader`. It is intentionally simple and geared towards
-research experimentation rather than maximum speed.
+Returns DGL subgraphs plus the local indices of the seed nodes so the training
+loop can compute losses only on the intended targets, similar to PyG's
+NeighborLoader contract.
 """
 
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass
 from typing import Iterable, List, Sequence
 
+import dgl
 import torch
-from torch_geometric.data import Data
-from torch_geometric.utils import subgraph
+from dgl.dataloading import MultiLayerNeighborSampler, NodeDataLoader
+
+
+@dataclass
+class SubgraphBatch:
+    graph: dgl.DGLGraph
+    seed_idx: torch.Tensor
+
+    @property
+    def batch_size(self) -> int:
+        return self.seed_idx.numel()
+
+
+def _build_neighbors(graph: dgl.DGLGraph) -> List[List[int]]:
+    """
+    Construct an undirected adjacency list from the (possibly directed) graph.
+    """
+    num_nodes = graph.num_nodes()
+    neighbors: List[set[int]] = [set() for _ in range(num_nodes)]
+    src, dst = graph.edges()
+    src_list = src.tolist()
+    dst_list = dst.tolist()
+    for s, d in zip(src_list, dst_list):
+        neighbors[s].add(d)
+        neighbors[d].add(s)
+    return [list(nbs) for nbs in neighbors]
 
 
 class HeuristicNeighborLoader:
     """
-    Mini-batch loader that performs heuristic neighbor sampling.
-
-    Parameters
-    ----------
-    data : Data
-        Full graph data object.
-    input_nodes : Tensor
-        Indices of nodes to use as training seeds (e.g., train_mask nonzeros).
-    batch_size : int
-        Number of seed nodes per batch.
-    num_hops : int
-        Number of sampling hops (graph layers).
-    k_pos : int
-        Number of neighbors to sample for positive-labeled nodes.
-    k_neg : int
-        Number of neighbors to sample for negative-labeled nodes.
-    shuffle : bool
-        Whether to shuffle the input node order each epoch.
+    Mini-batch loader that performs label-aware neighbor sampling using DGL graphs.
     """
 
     def __init__(
         self,
-        data: Data,
+        graph: dgl.DGLGraph,
         input_nodes: torch.Tensor,
         batch_size: int,
         num_hops: int = 2,
@@ -55,7 +61,8 @@ class HeuristicNeighborLoader:
         k_neg: int = 5,
         shuffle: bool = True,
     ) -> None:
-        self.data = data
+        self.graph = graph
+        self.labels = graph.ndata["label"]
         self.input_nodes = input_nodes.clone().detach().cpu()
         self.batch_size = batch_size
         self.num_hops = num_hops
@@ -63,28 +70,12 @@ class HeuristicNeighborLoader:
         self.k_neg = k_neg
         self.shuffle = shuffle
 
-        self._neighbors = self._build_neighbors(data.edge_index, data.num_nodes)
-
-    @staticmethod
-    def _build_neighbors(edge_index: torch.Tensor, num_nodes: int) -> List[List[int]]:
-        """
-        Build an undirected adjacency list from edge_index.
-        """
-        src, dst = edge_index
-        neighbors: List[List[int]] = [[] for _ in range(num_nodes)]
-        src_np = src.cpu().numpy()
-        dst_np = dst.cpu().numpy()
-        for s, d in zip(src_np, dst_np):
-            if d not in neighbors[s]:
-                neighbors[s].append(d)
-            if s not in neighbors[d]:
-                neighbors[d].append(s)
-        return neighbors
+        self._neighbors = _build_neighbors(graph)
 
     def __len__(self) -> int:
         return (self.input_nodes.numel() + self.batch_size - 1) // self.batch_size
 
-    def __iter__(self) -> Iterable[Data]:
+    def __iter__(self) -> Iterable[SubgraphBatch]:
         indices = self.input_nodes.clone()
         if self.shuffle:
             perm = torch.randperm(indices.numel())
@@ -107,18 +98,17 @@ class HeuristicNeighborLoader:
             return neighbors
         return random.sample(neighbors, k)
 
-    def _build_batch(self, seeds: torch.Tensor) -> Data:
-        data = self.data
+    def _build_batch(self, seeds: torch.Tensor) -> SubgraphBatch:
+        graph = self.graph
         seeds_list = seeds.tolist()
 
-        # Start from seeds and grow the node set for num_hops.
         node_set = set(seeds_list)
         frontier = seeds_list
 
         for _ in range(self.num_hops):
             new_frontier: List[int] = []
             for nid in frontier:
-                label = int(data.y[nid].item())
+                label = int(self.labels[nid].item())
                 sampled_neighbors = self._sample_neighbors_for_node(nid, label)
                 for nb in sampled_neighbors:
                     if nb not in node_set:
@@ -128,21 +118,53 @@ class HeuristicNeighborLoader:
             if not frontier:
                 break
 
-        # Build subgraph.
         node_idx = torch.tensor(sorted(node_set), dtype=torch.long)
-        sub_edge_index, _ = subgraph(node_idx, data.edge_index, relabel_nodes=True)
-        x_sub = data.x[node_idx]
-        y_sub = data.y[node_idx]
+        subgraph = dgl.node_subgraph(graph, node_idx)
 
-        # Map seeds to local indices.
-        global_to_local = {nid.item(): i for i, nid in enumerate(node_idx)}
+        global_to_local = {int(nid): i for i, nid in enumerate(node_idx.tolist())}
         seed_local_idx = torch.tensor(
             [global_to_local[nid] for nid in seeds_list], dtype=torch.long
         )
 
-        batch = Data(x=x_sub, edge_index=sub_edge_index, y=y_sub)
-        batch.batch_size = seed_local_idx.numel()
-        batch.seed_idx = seed_local_idx
-        return batch
+        return SubgraphBatch(graph=subgraph, seed_idx=seed_local_idx)
+
+
+def build_uniform_neighbor_dataloader(
+    graph: dgl.DGLGraph,
+    input_nodes: torch.Tensor,
+    num_neighbors: Sequence[int],
+    batch_size: int,
+    shuffle: bool = True,
+    num_workers: int = 0,
+) -> NodeDataLoader:
+    """
+    Construct a DGL NodeDataLoader for standard uniform neighbor sampling.
+
+    Parameters
+    ----------
+    graph : dgl.DGLGraph
+        Full training graph containing node features, labels, and masks.
+    input_nodes : torch.Tensor
+        Node IDs that should serve as seeds (e.g., train mask indices).
+    num_neighbors : Sequence[int]
+        Fan-out per hop, like PyG's `num_neighbors`.
+    batch_size : int
+        Number of seed nodes per mini-batch.
+    shuffle : bool
+        Whether to reshuffle the order of seeds every epoch.
+    num_workers : int
+        Number of sampler workers (0 = iterate in main process).
+    """
+    sampler = MultiLayerNeighborSampler(num_neighbors)
+    dataloader = NodeDataLoader(
+        graph,
+        input_nodes,
+        sampler,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        drop_last=False,
+        num_workers=num_workers,
+    )
+    return dataloader
 
 

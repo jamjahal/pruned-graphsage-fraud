@@ -141,10 +141,11 @@ def run_single_seed(exp_cfg: ExperimentConfig, seed: int) -> dict:
 
     device = torch.device(base_cfg.device)
     dataset = load_dgraphfin_dataset(root=exp_cfg.data_root)
-    data = dataset[0].to(device)
+    graph_cpu = dataset[0]
+    graph_device = graph_cpu.to(device)
 
     model = build_graphsage_for_data(
-        data,
+        graph_device,
         hidden_channels=base_cfg.hidden_channels,
         num_layers=base_cfg.num_layers,
         dropout=base_cfg.dropout,
@@ -154,25 +155,26 @@ def run_single_seed(exp_cfg: ExperimentConfig, seed: int) -> dict:
     if exp_cfg.model_variant == "pruned_magnitude":
         model = prune_model_magnitude(model, sparsity=exp_cfg.sparsity)
     elif exp_cfg.model_variant == "pruned_synflow":
-        model = prune_model_synflow(model, data=data, sparsity=exp_cfg.sparsity)
+        model = prune_model_synflow(model, graph=graph_device, sparsity=exp_cfg.sparsity)
     elif exp_cfg.model_variant != "baseline":
         raise ValueError(f"Unknown model_variant: {exp_cfg.model_variant}")
 
     # Efficiency metrics.
     num_params = count_parameters(model, trainable_only=True)
     approx_flops = estimate_graphsage_flops(
-        model, num_nodes=data.num_nodes, num_edges=data.num_edges
+        model, num_nodes=graph_cpu.num_nodes(), num_edges=graph_cpu.num_edges()
     )
     print(
         f"[Seed {seed}] Variant: {exp_cfg.model_variant} | "
         f"Params: {num_params} | FLOPs: {approx_flops:.3e}" if approx_flops is not None else ""
     )
 
-    pos_weight = compute_pos_weight(data.y.to(device)).to(device)
+    labels = graph_device.ndata["label"]
+    pos_weight = compute_pos_weight(labels).to(device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     optimizer = optim.Adam(model.parameters(), lr=base_cfg.lr, weight_decay=base_cfg.weight_decay)
 
-    train_loader = build_loaders(data, base_cfg)
+    train_loader = build_loaders(graph_cpu, base_cfg, device)
 
     best_val_auprc = float("-inf")
     best_epoch = -1
@@ -184,49 +186,60 @@ def run_single_seed(exp_cfg: ExperimentConfig, seed: int) -> dict:
         total_loss = 0.0
         total_examples = 0
 
-        for batch in train_loader:
-            batch = batch.to(device)
-            optimizer.zero_grad()
+        if exp_cfg.sampling == "uniform":
+            for _, _, blocks in train_loader:
+                optimizer.zero_grad()
+                blocks = [block.to(device) for block in blocks]
+                batch_feats = blocks[0].srcdata["feat"]
+                batch_labels = blocks[-1].dstdata["label"].float()
+                logits = model(blocks, batch_feats).view(-1)
+                loss = criterion(logits, batch_labels)
+                loss.backward()
+                optimizer.step()
+                if exp_cfg.model_variant in ("pruned_magnitude", "pruned_synflow"):
+                    enforce_masks(model)
 
-            logits_all = model(batch.x, batch.edge_index).view(-1)
-            if hasattr(batch, "seed_idx"):
+                batch_size = batch_labels.size(0)
+                total_loss += loss.item() * batch_size
+                total_examples += batch_size
+        else:
+            for batch in train_loader:
+                optimizer.zero_grad()
+                subgraph = batch.graph.to(device)
+                feats = subgraph.ndata["feat"]
+                logits_all = model(subgraph, feats).view(-1)
                 seed_idx = batch.seed_idx.to(logits_all.device)
-            else:
-                seed_idx = torch.arange(batch.batch_size, device=logits_all.device)
+                targets = subgraph.ndata["label"][seed_idx].float()
+                logits = logits_all[seed_idx]
 
-            logits = logits_all[seed_idx]
-            targets = batch.y[seed_idx].float()
+                loss = criterion(logits, targets)
+                loss.backward()
+                optimizer.step()
+                if exp_cfg.model_variant in ("pruned_magnitude", "pruned_synflow"):
+                    enforce_masks(model)
 
-            loss = criterion(logits, targets)
-            loss.backward()
-            optimizer.step()
-
-            # Enforce masks for pruned models so zeros remain zeros.
-            if exp_cfg.model_variant in ("pruned_magnitude", "pruned_synflow"):
-                enforce_masks(model)
-
-            batch_size = targets.size(0)
-            total_loss += loss.item() * batch_size
-            total_examples += batch_size
+                batch_size = targets.size(0)
+                total_loss += loss.item() * batch_size
+                total_examples += batch_size
 
         avg_loss = total_loss / max(total_examples, 1)
 
         # Validation + test metrics.
         model.eval()
         with torch.no_grad():
-            logits_full = model(data.x, data.edge_index).view(-1)
+            logits_full = model(graph_device, graph_device.ndata["feat"]).view(-1)
 
             def _eval_mask(mask: torch.Tensor) -> dict:
                 mask_logits = logits_full[mask]
-                mask_targets = data.y[mask].float()
-                loss_val = criterion(mask_logits, mask_targets.to(device)).item()
+                mask_targets = graph_device.ndata["label"][mask].float()
+                loss_val = criterion(mask_logits, mask_targets).item()
                 probs_val = torch.sigmoid(mask_logits)
                 m = compute_binary_metrics(mask_targets.cpu(), probs_val.cpu())
                 m["loss"] = loss_val
                 return m
 
-            val_metrics = _eval_mask(data.val_mask)
-            test_metrics = _eval_mask(data.test_mask)
+            val_metrics = _eval_mask(graph_device.ndata["val_mask"])
+            test_metrics = _eval_mask(graph_device.ndata["test_mask"])
 
         print(
             f"[Seed {seed}] Epoch {epoch:03d} | "

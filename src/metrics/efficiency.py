@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from dgl.nn import SAGEConv
 import torch
 from torch import nn
 
@@ -40,8 +41,6 @@ def estimate_graphsage_flops(
 
     If the model does not follow this pattern, returns None.
     """
-    from torch_geometric.nn import SAGEConv  # imported lazily
-
     conv_layers = [m for m in model.modules() if isinstance(m, SAGEConv)]
     if not conv_layers:
         return None

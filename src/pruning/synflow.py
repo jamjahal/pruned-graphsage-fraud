@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Dict, Tuple
 
 import torch
+from dgl.nn import SAGEConv
 from torch import nn
 
 
@@ -26,10 +27,8 @@ def _iter_prunable_params(model: nn.Module) -> Tuple[PrunableParam, ...]:
 
     For now we prune:
     - weights of nn.Linear
-    - weights of torch_geometric.nn.SAGEConv
+    - weights of DGL's SAGEConv
     """
-    from torch_geometric.nn import SAGEConv  # lazy import
-
     prunable: list[PrunableParam] = []
     for module in model.modules():
         if isinstance(module, (nn.Linear, SAGEConv)):
@@ -39,7 +38,7 @@ def _iter_prunable_params(model: nn.Module) -> Tuple[PrunableParam, ...]:
     return tuple(prunable)
 
 
-def compute_synflow_scores(model: nn.Module, data) -> Dict[PrunableParam, torch.Tensor]:
+def compute_synflow_scores(model: nn.Module, graph) -> Dict[PrunableParam, torch.Tensor]:
     """
     Compute SynFlow scores for all prunable parameters.
 
@@ -62,8 +61,9 @@ def compute_synflow_scores(model: nn.Module, data) -> Dict[PrunableParam, torch.
             p.data = p.data.abs()
 
     # All-ones input (data-agnostic).
-    x_ones = torch.ones_like(data.x, device=device)
-    out = model(x_ones, data.edge_index)
+    graph = graph.to(device)
+    x_ones = torch.ones_like(graph.ndata["feat"], device=device)
+    out = model(graph, x_ones)
 
     # Sum over all outputs and backpropagate.
     torch.sum(out).backward()
@@ -108,13 +108,13 @@ def _global_threshold_from_scores(
 
 def build_synflow_masks(
     model: nn.Module,
-    data,
+    graph,
     sparsity: float,
 ) -> MaskDict:
     """
     Compute SynFlow scores and build binary masks for a target sparsity.
     """
-    scores = compute_synflow_scores(model, data)
+    scores = compute_synflow_scores(model, graph)
     threshold = _global_threshold_from_scores(scores, sparsity)
 
     masks: MaskDict = {}
@@ -159,7 +159,7 @@ def enforce_masks(model: nn.Module) -> None:
 
 def prune_model_synflow(
     model: nn.Module,
-    data,
+    graph,
     sparsity: float,
 ) -> nn.Module:
     """
@@ -169,7 +169,7 @@ def prune_model_synflow(
 
     Returns the same model instance for chaining.
     """
-    masks = build_synflow_masks(model, data, sparsity=sparsity)
+    masks = build_synflow_masks(model, graph, sparsity=sparsity)
     apply_masks_inplace(model, masks)
     return model
 

@@ -42,7 +42,7 @@ pip freeze > requirements.txt
 ## Key Libraries Installed
 
 - **PyTorch** - Deep learning framework
-- **PyTorch Geometric** - Graph neural network library
+- **DGL** - Graph neural network library (GraphSAGE, sampling, etc.)
 - **NumPy, Pandas, SciPy** - Data processing
 - **scikit-learn** - Machine learning utilities
 - **torch-pruning** - Model pruning utilities
@@ -59,117 +59,38 @@ pip freeze > requirements.txt
 
 ---
 
-# Environment Setup Note for macOS (Apple Silicon/M1/M2)
+## Environment Setup Note for macOS (Apple Silicon/M1/M2) and Colab
 
-This project requires PyTorch Geometric (PyG) C++ extensions (`torch-sparse`, `torch-scatter`, etc.). Installing these extensions on macOS Apple Silicon (M1/M2) with standard virtual environments frequently fails due to two main issues:
+This project now uses **DGL** for graph neural network layers and sampling. Installation is much simpler than the previous PyG setup.
 
-**Compiler Configuration**: The default macOS system compiler (clang) is incompatible with the PyG C++ source code.
+### macOS (Apple Silicon/M1/M2)
 
-**API Mismatch**: The isolated build environment often uses a version of a PyG extension (like `torch-scatter`) whose C++ APIs conflict with the installed PyTorch version (even when both are nominally compatible).
-
-## ✅ Definitive Solution: Pinned Versions and Build Isolation Control
-
-The only way to guarantee a successful installation is to use a specific, stable version set and force the build system to use the correct M1 compiler while disabling its isolation.
-
-| Dependency | Pinned Version | Reason |
-|------------|----------------|--------|
-| PyTorch | 2.0.0 | Stable baseline. Downgraded from 2.3.0 to utilize a version set with more robust M1-compatible binary wheels. |
-| PyG Extensions | Varies (e.g., `torch-scatter=2.0.9`) | Specific versions were chosen through trial-and-error to find the exact C++ API level compatible with `torch==2.0.0`. |
-| Build Flag | `--no-build-isolation` | Critical fix. Forces the build process to directly access the active virtual environment, allowing it to find the installed torch module and avoid the `ModuleNotFoundError`. |
-
-## 🚀 Implementation Steps
-
-To successfully set up the environment, follow these steps in your project directory:
-
-### 1. Update Dependencies
-
-Ensure your `requirements.txt` file contains this exact, successful configuration:
-
-```ini
-# --- CORE FRAMEWORK (PINNED) ---
-
-torch==2.0.0
-
-torchvision==0.15.1
-
-torchaudio==0.15.1
-
-
-
-# --- PYG EXTENSIONS (SUCCESSFUL PINS) ---
-
-torch-geometric==2.3.1
-
-torch-sparse==0.6.17
-
-torch-scatter==2.0.9 # The final successful version!
-
-torch-cluster==1.6.1
-
-torch-spline-conv==1.2.2
-
-
-
-# ... include the rest of your non-PyG requirements here (numpy, pandas, etc.)
-```
-
-### 2. Reset Environment and Install Build Tools
-
-Create a clean environment and ensure the Homebrew LLVM compiler is installed, as it is required for building C++ extensions on M1.
+1. Create/activate the virtual environment:
 
 ```bash
-# Deactivate and reset environment
-deactivate
-rm -rf venv
 python3.10 -m venv venv
 source venv/bin/activate
-
-# Install necessary M1 build tools (if not already installed)
-brew install cmake llvm libomp
-
-# Set compiler environment variables for the current session
-export CC=$(brew --prefix llvm)/bin/clang
-export CXX=$(brew --prefix llvm)/bin/clang++
-export LDFLAGS="-L$(brew --prefix llvm)/lib"
-export CPPFLAGS="-I$(brew --prefix llvm)/include"
+pip install --upgrade pip
 ```
 
-### 3. Install Packages (Disabling Build Isolation)
-
-Run the final command to install all dependencies. The `--no-build-isolation` flag bypasses the error-prone default build process:
+2. Install dependencies (CPU-only, works on M1/M2):
 
 ```bash
-pip install -r requirements.txt \
-    -f https://data.pyg.org/whl/torch-2.0.0+cpu.html \
-    --no-cache-dir \
-    --no-build-isolation
+pip install -r requirements.txt
 ```
 
-### 4. Cleanup
+This will install `torch==2.0.0` and `dgl` with CPU support, which is sufficient for development and smaller runs.
 
-After a successful installation, you should unset the temporary environment variables:
+### Google Colab
 
-```bash
-unset CC
-unset CXX
-unset LDFLAGS
-unset CPPFLAGS
+In a Colab notebook cell, you can install the dependencies with:
+
+```python
+!pip install torch==2.0.0 torchvision==0.15.1 torchaudio==0.15.1
+!pip install dgl==2.4.0
+!pip install -r requirements.txt
 ```
 
-## 🔧 Troubleshooting
+If you want a GPU-accelerated DGL build, you can instead install the CUDA-specific DGL wheel following the [official DGL installation instructions](https://www.dgl.ai/pages/start.html) for the CUDA version used by Colab, then install the rest of the requirements.
 
-If you encounter issues:
-
-1. **Always start fresh**: Delete and recreate the virtual environment if installation fails
-2. **Check compiler paths**: Ensure Homebrew LLVM is properly installed with `brew install llvm`
-3. **Verify environment variables**: Double-check that `CC` and `CXX` point to the correct clang binaries
-4. **Use the exact versions**: Do not deviate from the pinned versions in `requirements.txt`
-5. **No build isolation**: The `--no-build-isolation` flag is critical - don't skip it
-
-## 📝 Notes for Apple Silicon Users
-
-- This installation process has been tested and confirmed working on M1/M2 MacBooks
-- The pinned versions provide stability but may not be the absolute latest
-- Consider upgrading PyTorch versions only after testing that PyG extensions remain compatible
-- The CPU wheel index (`-f https://data.pyg.org/whl/torch-2.0.0+cpu.html`) ensures you get pre-compiled binaries where possible
 

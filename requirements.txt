@@ -1,51 +1,44 @@
-# --- Core Deep Learning Framework (Pinned to PyTorch 2.0.0 stable set) ---
+### Core Deep Learning Framework (kept at PyTorch 2.0.0 for stability)
 torch==2.0.0
-torchvision==0.15.1
-torchaudio==0.15.1
 
-# --- Graph Neural Network Libraries (Pinned to compatible versions for torch 2.0.0) ---
-torch-geometric==2.3.1
-# Explicitly list the C++ extensions that were failing - these versions are confirmed working on M1/M2
-torch-sparse==0.6.17
-torch-scatter==2.0.9  # The final successful version for M1/M2 compatibility!
-torch-cluster==1.6.1
-torch-spline-conv==1.2.2
 
-# --- Data Processing & Analysis ---
+### Graph Neural Network Library (DGL, CPU-friendly for M1 + Colab)
+# CPU-only DGL; for GPU Colab you can optionally install a CUDA build at runtime.
+dgl==2.0.0
+
+### Data Processing & Analysis
 numpy>=1.24.0
 pandas>=2.0.0
 scipy>=1.10.0
 
-# Machine Learning Utilities
+### Machine Learning Utilities
 scikit-learn>=1.3.0
 
-# Model Pruning & Compression
-# Note: SynFlow may need custom implementation, but these help:
-torch-pruning>=1.0.0  # For general pruning utilities
+### Model Pruning & Compression
+torch-pruning>=1.0.0  # General pruning utilities (independent of PyG/DGL)
 
-# Evaluation Metrics
-# AUPRC is available in sklearn, but these provide additional tools:
-imbalanced-learn>=0.11.0  # For handling imbalanced datasets
+### Evaluation Metrics
+imbalanced-learn>=0.11.0  # Handling imbalanced datasets
 
-# Visualization
+### Visualization
 matplotlib>=3.7.0
 seaborn>=0.12.0
 
-# Progress Bars & Utilities
+### Progress Bars & Utilities
 tqdm>=4.65.0
 
-# Configuration Management
+### Configuration Management
 pyyaml>=6.0
 
-# Experiment Tracking (Optional but recommended)
+### Experiment Tracking (Optional but recommended)
 tensorboard>=2.13.0  # For tracking training metrics
 # wandb>=0.15.0  # Alternative: Weights & Biases for experiment tracking
 
-# Jupyter/Notebook Support (if needed)
+### Jupyter/Notebook Support (if needed)
 jupyter>=1.0.0
 ipykernel>=6.25.0
 
-# Graph Dataset Loading
-# torch-geometric includes dataset loaders, but you may need:
-requests>=2.31.0  # For downloading datasets
+### Misc Utilities
+requests>=2.31.0  # For downloading datasets, if needed
+
 

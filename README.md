@@ -29,39 +29,55 @@ The goal is to build a **deployable, efficient, and high-recall** graph model su
 
 ```bash
 cd /Users/jameshall/UCLA/260D/project
-source venv/bin/activate  # or your preferred venv name
+python3.10 -m venv venv  # if not already created
+source venv/bin/activate
 ```
 
-2. **Install Python dependencies**
+2. **Install Python dependencies (PyTorch + DGL + utilities)**
 
 ```bash
+pip install --upgrade pip
 pip install -r requirements.txt
+```
+
+On Google Colab, you can run:
+
+```python
+!pip install torch==2.0.0 torchvision==0.15.1 torchaudio==0.15.1
+!pip install dgl==2.4.0
+!pip install -r requirements.txt
 ```
 
 3. **Prepare the dataset**
 
 - Place the DGraph-Fin archive under `data/` (already present as `DGraphFin2.zip`).
-- Later steps in `src/data/dgraph_fin.py` will handle extracting / loading this data.
+- The loader in `src/data/dgraph_fin.py` will read from the unpacked npz/npy files.
 
-### Running the Baseline (once implemented)
+### Running the Baseline
 
-After the baseline GraphSAGE model and training script are implemented, you will be able to run:
+Launch a baseline run (uniform sampling, default hyperparameters):
 
 ```bash
-python -m src.training.train_baseline --config src/config/baseline.yaml
+python -m src.training.train_baseline --data-root data/DGraphFin2 --sampling uniform --device cpu
 ```
 
-This will:
+Key CLI flags mirror the `TrainConfig` dataclass. For example, to switch to the heuristic sampler:
 
-- Load DGraph-Fin
-- Train an unpruned GraphSAGE model with uniform neighbor sampling
-- Log AUPRC and other metrics
+```bash
+python -m src.training.train_baseline --sampling heuristic --k-pos 25 --k-neg 5
+```
+
+Both commands will:
+
+- Load DGraph-Fin via the new DGL-based loader
+- Train an unpruned GraphSAGE model with the requested mini-batch sampler
+- Log AUPRC/ROC-AUC and other metrics each epoch
 
 ### Reproducibility and Experiments
 
-The `experiments/` directory will contain:
+The `experiments/` directory contains configs and scripts for:
 
-- Scripts to run baseline, magnitude-pruned, and SynFlow-pruned models
+- Baseline, magnitude-pruned, and SynFlow-pruned models
 - Utilities to aggregate metrics across seeds and generate tables/plots
 
 Refer to `documentation/260D Project Proposals.md` and `reports/` for detailed methodology and analysis once experiments are complete.
