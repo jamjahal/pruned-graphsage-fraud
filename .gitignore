@@ -50,3 +50,5 @@ wandb/
 data/DGraphFin/
 experiments/results/
 *.zip
+*.npy
+
