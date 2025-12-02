@@ -36,6 +36,7 @@ class GraphSAGE(nn.Module):
         in_channels: int,
         hidden_channels: int = 128,
         num_layers: int = 2,
+        aggregator_type: str = "mean",
         dropout: float = 0.2,
     ) -> None:
         super().__init__()
@@ -44,10 +45,10 @@ class GraphSAGE(nn.Module):
             raise ValueError("num_layers must be >= 1")
 
         self.convs = nn.ModuleList()
-        self.convs.append(SAGEConv(in_channels, hidden_channels))
+        self.convs.append(SAGEConv(in_channels, hidden_channels, aggregator_type))
 
         for _ in range(num_layers - 1):
-            self.convs.append(SAGEConv(hidden_channels, hidden_channels))
+            self.convs.append(SAGEConv(hidden_channels, hidden_channels, aggregator_type))
 
         self.dropout = nn.Dropout(dropout)
         self.activation = nn.ReLU()
@@ -108,6 +109,7 @@ def build_graphsage_for_data(
     hidden_channels: int = 128,
     num_layers: int = 2,
     dropout: float = 0.2,
+    aggregator_type: str = "mean",
 ) -> GraphSAGE:
     """
     Convenience constructor that infers `in_channels` from graph node features.
@@ -120,6 +122,7 @@ def build_graphsage_for_data(
         hidden_channels=hidden_channels,
         num_layers=num_layers,
         dropout=dropout,
+        aggregator_type=aggregator_type,
     )
 
 
