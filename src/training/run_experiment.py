@@ -14,7 +14,7 @@ import argparse
 import json
 import os
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 import torch
 import yaml
@@ -126,7 +126,49 @@ def _build_base_train_config(exp_cfg: ExperimentConfig, seed: int) -> BaseTrainC
     )
 
 
-def run_single_seed(exp_cfg: ExperimentConfig, seed: int) -> dict:
+def _floatify_metrics(metrics: dict) -> dict:
+    """
+    Convert all numeric metric values into builtin floats for JSON serialization.
+    """
+    return {
+        k: float(v)
+        if isinstance(v, (int, float))
+        or (hasattr(v, "item") and callable(getattr(v, "item")))
+        else v
+        for k, v in metrics.items()
+    }
+
+
+def _build_summary(
+    seed: int,
+    exp_cfg: ExperimentConfig,
+    num_params: int,
+    approx_flops: Optional[float],
+    best_epoch: int,
+    best_val_metrics: dict,
+    best_test_metrics: dict,
+    final_val_metrics: dict,
+    final_test_metrics: dict,
+) -> dict:
+    """
+    Package all bookkeeping info for a single seed into a JSON-serializable dict.
+    """
+    return {
+        "seed": seed,
+        "model_variant": exp_cfg.model_variant,
+        "sampling": exp_cfg.sampling,
+        "sparsity": exp_cfg.sparsity,
+        "num_params": num_params,
+        "approx_flops": approx_flops,
+        "best_epoch": best_epoch,
+        "best_val": _floatify_metrics(best_val_metrics),
+        "best_test": _floatify_metrics(best_test_metrics),
+        "final_val_auprc": float(final_val_metrics["auprc"]),
+        "final_test_auprc": float(final_test_metrics["auprc"]),
+    }
+
+
+def run_single_seed(exp_cfg: ExperimentConfig, seed: int, autosave_dir: Optional[str] = None) -> dict:
     """
     Run training + evaluation for one random seed and return a summary.
 
@@ -181,94 +223,126 @@ def run_single_seed(exp_cfg: ExperimentConfig, seed: int) -> dict:
     best_val_metrics = {}
     best_test_metrics = {}
 
-    for epoch in range(1, base_cfg.epochs + 1):
-        model.train()
-        total_loss = 0.0
-        total_examples = 0
+    log_file = None
+    if autosave_dir is not None:
+        os.makedirs(autosave_dir, exist_ok=True)
+        log_path = os.path.join(autosave_dir, f"seed_{seed}.log")
+        log_file = open(log_path, "a", buffering=1)
 
-        if exp_cfg.sampling == "uniform":
-            for _, _, blocks in train_loader:
-                optimizer.zero_grad()
-                blocks = [block.to(device) for block in blocks]
-                batch_feats = blocks[0].srcdata["feat"]
-                batch_labels = blocks[-1].dstdata["label"].float()
-                logits = model(blocks, batch_feats).view(-1)
-                loss = criterion(logits, batch_labels)
-                loss.backward()
-                optimizer.step()
-                if exp_cfg.model_variant in ("pruned_magnitude", "pruned_synflow"):
-                    enforce_masks(model)
+    def _log(message: str) -> None:
+        print(message)
+        if log_file is not None:
+            log_file.write(message + "\n")
+            log_file.flush()
 
-                batch_size = batch_labels.size(0)
-                total_loss += loss.item() * batch_size
-                total_examples += batch_size
-        else:
-            for batch in train_loader:
-                optimizer.zero_grad()
-                subgraph = batch.graph.to(device)
-                feats = subgraph.ndata["feat"]
-                logits_all = model(subgraph, feats).view(-1)
-                seed_idx = batch.seed_idx.to(logits_all.device)
-                targets = subgraph.ndata["label"][seed_idx].float()
-                logits = logits_all[seed_idx]
+    try:
+        for epoch in range(1, base_cfg.epochs + 1):
+            model.train()
+            total_loss = 0.0
+            total_examples = 0
 
-                loss = criterion(logits, targets)
-                loss.backward()
-                optimizer.step()
-                if exp_cfg.model_variant in ("pruned_magnitude", "pruned_synflow"):
-                    enforce_masks(model)
+            if exp_cfg.sampling == "uniform":
+                for _, _, blocks in train_loader:
+                    optimizer.zero_grad()
+                    blocks = [block.to(device) for block in blocks]
+                    batch_feats = blocks[0].srcdata["feat"]
+                    batch_labels = blocks[-1].dstdata["label"].float()
+                    logits = model(blocks, batch_feats).view(-1)
+                    loss = criterion(logits, batch_labels)
+                    loss.backward()
+                    optimizer.step()
+                    if exp_cfg.model_variant in ("pruned_magnitude", "pruned_synflow"):
+                        enforce_masks(model)
 
-                batch_size = targets.size(0)
-                total_loss += loss.item() * batch_size
-                total_examples += batch_size
+                    batch_size = batch_labels.size(0)
+                    total_loss += loss.item() * batch_size
+                    total_examples += batch_size
+            else:
+                for batch in train_loader:
+                    optimizer.zero_grad()
+                    subgraph = batch.graph.to(device)
+                    feats = subgraph.ndata["feat"]
+                    logits_all = model(subgraph, feats).view(-1)
+                    seed_idx = batch.seed_idx.to(logits_all.device)
+                    targets = subgraph.ndata["label"][seed_idx].float()
+                    logits = logits_all[seed_idx]
 
-        avg_loss = total_loss / max(total_examples, 1)
+                    loss = criterion(logits, targets)
+                    loss.backward()
+                    optimizer.step()
+                    if exp_cfg.model_variant in ("pruned_magnitude", "pruned_synflow"):
+                        enforce_masks(model)
 
-        # Validation + test metrics.
-        model.eval()
-        with torch.no_grad():
-            logits_full = model(graph_device, graph_device.ndata["feat"]).view(-1)
+                    batch_size = targets.size(0)
+                    total_loss += loss.item() * batch_size
+                    total_examples += batch_size
 
-            def _eval_mask(mask: torch.Tensor) -> dict:
-                mask_logits = logits_full[mask]
-                mask_targets = graph_device.ndata["label"][mask].float()
-                loss_val = criterion(mask_logits, mask_targets).item()
-                probs_val = torch.sigmoid(mask_logits)
-                m = compute_binary_metrics(mask_targets.cpu(), probs_val.cpu())
-                m["loss"] = loss_val
-                return m
+            avg_loss = total_loss / max(total_examples, 1)
 
-            val_metrics = _eval_mask(graph_device.ndata["val_mask"])
-            test_metrics = _eval_mask(graph_device.ndata["test_mask"])
+            # Validation + test metrics.
+            model.eval()
+            with torch.no_grad():
+                logits_full = model(graph_device, graph_device.ndata["feat"]).view(-1)
 
-        print(
-            f"[Seed {seed}] Epoch {epoch:03d} | "
-            f"Train Loss: {avg_loss:.4f} | "
-            f"Val Loss: {val_metrics['loss']:.4f} | "
-            f"Val AUPRC: {val_metrics['auprc']:.4f} | "
-            f"Val ROC-AUC: {val_metrics['roc_auc']:.4f}"
-        )
+                def _eval_mask(mask: torch.Tensor) -> dict:
+                    mask_logits = logits_full[mask]
+                    mask_targets = graph_device.ndata["label"][mask].float()
+                    loss_val = criterion(mask_logits, mask_targets).item()
+                    probs_val = torch.sigmoid(mask_logits)
+                    m = compute_binary_metrics(mask_targets.cpu(), probs_val.cpu())
+                    m["loss"] = loss_val
+                    return m
 
-        if val_metrics["auprc"] > best_val_auprc:
-            best_val_auprc = val_metrics["auprc"]
-            best_epoch = epoch
-            best_val_metrics = val_metrics
-            best_test_metrics = test_metrics
+                val_metrics = _eval_mask(graph_device.ndata["val_mask"])
+                test_metrics = _eval_mask(graph_device.ndata["test_mask"])
 
-    summary = {
-        "seed": seed,
-        "model_variant": exp_cfg.model_variant,
-        "sampling": exp_cfg.sampling,
-        "sparsity": exp_cfg.sparsity,
-        "num_params": num_params,
-        "approx_flops": approx_flops,
-        "best_epoch": best_epoch,
-        "best_val": best_val_metrics,
-        "best_test": best_test_metrics,
-        "final_val_auprc": float(val_metrics["auprc"]),
-        "final_test_auprc": float(test_metrics["auprc"]),
-    }
-    return summary
+            _log(
+                f"[Seed {seed}] Epoch {epoch:03d} | "
+                f"Train Loss: {avg_loss:.4f} | "
+                f"Val Loss: {val_metrics['loss']:.4f} | "
+                f"Val AUPRC: {val_metrics['auprc']:.4f} | "
+                f"Val ROC-AUC: {val_metrics['roc_auc']:.4f}"
+            )
+
+            if val_metrics["auprc"] > best_val_auprc:
+                best_val_auprc = val_metrics["auprc"]
+                best_epoch = epoch
+                best_val_metrics = val_metrics
+                best_test_metrics = test_metrics
+
+                if autosave_dir is not None:
+                    interim_summary = _build_summary(
+                        seed,
+                        exp_cfg,
+                        num_params,
+                        approx_flops,
+                        best_epoch,
+                        best_val_metrics,
+                        best_test_metrics,
+                        val_metrics,
+                        test_metrics,
+                    )
+                    save_summary(autosave_dir, seed, interim_summary)
+    finally:
+        if log_file is not None:
+            log_file.close()
+
+    final_summary = _build_summary(
+        seed,
+        exp_cfg,
+        num_params,
+        approx_flops,
+        best_epoch,
+        best_val_metrics,
+        best_test_metrics,
+        val_metrics,
+        test_metrics,
+    )
+
+    if autosave_dir is not None:
+        save_summary(autosave_dir, seed, final_summary)
+
+    return final_summary
 
 
 def save_summary(output_dir: str, seed: int, summary: dict) -> None:
@@ -282,6 +356,8 @@ def save_summary(output_dir: str, seed: int, summary: dict) -> None:
     path = os.path.join(output_dir, f"seed_{seed}.json")
     with open(path, "w") as f:
         json.dump(summary, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
     print(f"Saved summary for seed {seed} to {path}")
 
 
@@ -304,8 +380,7 @@ def main() -> None:
     exp_cfg = load_experiment_config(args.config)
 
     for seed in exp_cfg.seeds:
-        summary = run_single_seed(exp_cfg, seed)
-        save_summary(exp_cfg.output_dir, seed, summary)
+        run_single_seed(exp_cfg, seed, autosave_dir=exp_cfg.output_dir)
 
 
 if __name__ == "__main__":
