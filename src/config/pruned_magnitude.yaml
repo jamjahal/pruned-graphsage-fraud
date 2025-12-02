@@ -4,7 +4,7 @@
 
 # Data and output settings
 data_root: "data/DGraphFin2"                         # Path to processed DGraphFin2 dataset
-output_dir: "experiments/results/pruned_magnitude"   # Directory to save training results
+output_dir: "/content/drive/MyDrive/UCLA/260D/pruned_graphsage_project/results/pruned_magnitude"    # Directory to save training results
 
 # Model architecture settings
 model_variant: "pruned_magnitude"                    # Model type: magnitude-based pruning (removes small weights)
