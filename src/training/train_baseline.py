@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
 import torch
-from dgl.dataloading import MultiLayerNeighborSampler, NodeDataLoader
+from dgl.dataloading import MultiLayerNeighborSampler, DataLoader
 from torch import nn, optim
 
 from src.data.dgraph_fin import load_dgraphfin_dataset
@@ -91,7 +91,7 @@ def build_loaders(graph, cfg: TrainConfig, device: torch.device):
     if cfg.sampling == "uniform":
         sampler = MultiLayerNeighborSampler(list(cfg.num_neighbors))
         dataloader_device = device if device.type == "cuda" else None
-        train_loader = NodeDataLoader(
+        train_loader = DataLoader(
             graph,
             train_idx,
             sampler,

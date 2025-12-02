@@ -18,7 +18,7 @@ from typing import Iterable, List, Sequence
 
 import dgl
 import torch
-from dgl.dataloading import MultiLayerNeighborSampler, NodeDataLoader
+from dgl.dataloading import MultiLayerNeighborSampler, DataLoader
 
 
 @dataclass
@@ -136,7 +136,7 @@ def build_uniform_neighbor_dataloader(
     batch_size: int,
     shuffle: bool = True,
     num_workers: int = 0,
-) -> NodeDataLoader:
+) -> DataLoader:
     """
     Construct a DGL NodeDataLoader for standard uniform neighbor sampling.
 
@@ -156,7 +156,7 @@ def build_uniform_neighbor_dataloader(
         Number of sampler workers (0 = iterate in main process).
     """
     sampler = MultiLayerNeighborSampler(num_neighbors)
-    dataloader = NodeDataLoader(
+    dataloader = DataLoader(
         graph,
         input_nodes,
         sampler,
