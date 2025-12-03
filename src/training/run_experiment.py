@@ -26,6 +26,7 @@ from typing import List, Optional
 import torch
 import yaml
 from torch import nn, optim
+from tqdm import tqdm
 
 from src.data.dgraph_fin import load_dgraphfin_dataset
 from src.metrics.efficiency import count_parameters, estimate_graphsage_flops
@@ -386,8 +387,10 @@ def main() -> None:
 
     exp_cfg = load_experiment_config(args.config)
 
-    for seed in exp_cfg.seeds:
+    for seed in tqdm(exp_cfg.seeds, desc="Seeds"):
         run_single_seed(exp_cfg, seed, autosave_dir=exp_cfg.output_dir)
+    
+    print("\nTraining completed successfully!")
 
 
 if __name__ == "__main__":

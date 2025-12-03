@@ -32,32 +32,53 @@ def estimate_graphsage_flops(
     """
     Roughly estimate FLOPs for a forward pass of a GraphSAGE-like model.
 
-    Assumptions:
-    - Each SAGEConv layer performs:
-      - Aggregation: O(E * d) operations.
-      - Transformation: O(N * d^2) operations (linear layer).
-    - We sum across all SAGEConv layers with the same hidden dimension.
-    - We ignore activation functions and dropout for simplicity.
 
-    If the model does not follow this pattern, returns None.
+    Assumptions:
+    - Aggregation: O(E * d_in) operations (dense, unpruned).
+    - Transformation: O(N * NNZ(W)) operations where NNZ is non-zero weights.
     """
-    conv_layers = [m for m in model.modules() if isinstance(m, SAGEConv)]
-    if not conv_layers:
+    flops = 0.0
+    
+    # Track if we found any recognized layers
+    found_layers = False
+
+    for m in model.modules():
+        if isinstance(m, SAGEConv):
+            found_layers = True
+            # Aggregation cost (Edge message passing)
+            # Usually assumes source features are dense: E * in_feats
+            # This part is generally NOT pruned in weight pruning
+            in_feats = m._in_src_feats
+            flops += num_edges * in_feats
+
+            # Transformation cost (Linear projection of neighbors/self)
+            # SAGEConv usually has a linear layer 'fc_neigh' and possibly 'fc_self'
+            # We inspect its sub-modules or parameters to find the Linear layers
+            # DGL SAGEConv uses `fc_neigh` and `fc_self` which are nn.Linear
+            for name, child in m.named_children():
+                if isinstance(child, nn.Linear):
+                    # Count non-zero weights for transformation
+                    w = child.weight
+                    nnz = torch.count_nonzero(w).item()
+                    # Linear layer is x @ W.T + b
+                    # Ops: N * NNZ (if we treat it as sparse-dense mul)
+                    flops += num_nodes * nnz
+
+        elif isinstance(m, nn.Linear):
+            # Standalone linear layers (e.g. final classifier not inside SAGEConv)
+            # Check if this linear layer is NOT part of a SAGEConv we already counted
+            is_submodule = False
+            for parent in model.modules():
+                if isinstance(parent, SAGEConv) and m in parent.modules():
+                    is_submodule = True
+                    break
+            
+            if not is_submodule:
+                found_layers = True
+                nnz = torch.count_nonzero(m.weight).item()
+                flops += num_nodes * nnz
+
+    if not found_layers:
         return None
 
-    # Assume constant hidden dimension across layers (typical for GraphSAGE).
-    hidden_dim = conv_layers[0]._out_feats
-
-    flops = 0.0
-    for _ in conv_layers:
-        flops += num_edges * hidden_dim  # aggregation
-        flops += num_nodes * (hidden_dim * hidden_dim)  # transformation
-
-    # Final linear projection if present.
-    for m in model.modules():
-        if isinstance(m, nn.Linear):
-            flops += num_nodes * (m.in_features * m.out_features)
-
     return float(flops)
-
-

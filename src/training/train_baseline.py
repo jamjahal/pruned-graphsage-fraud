@@ -19,6 +19,7 @@ from typing import Optional, Sequence
 import torch
 from dgl.dataloading import MultiLayerNeighborSampler, DataLoader
 from torch import nn, optim
+from tqdm import tqdm
 
 from src.data.dgraph_fin import load_dgraphfin_dataset
 from src.models.graphsage import build_graphsage_for_data
@@ -159,7 +160,7 @@ def train_baseline(cfg: Optional[TrainConfig] = None) -> None:
 
     train_loader = build_loaders(graph_cpu, cfg, device)
 
-    for epoch in range(1, cfg.epochs + 1):
+    for epoch in tqdm(range(1, cfg.epochs + 1), desc="Training Epochs"):
         model.train()
         total_loss = 0.0
         total_examples = 0

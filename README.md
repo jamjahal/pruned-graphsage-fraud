@@ -82,4 +82,10 @@ The `experiments/` directory contains configs and scripts for:
 
 Refer to `documentation/260D Project Proposals.md` and `reports/` for detailed methodology and analysis once experiments are complete.
 
+### References
+
+- **DGraph Dataset**: Xuanwen Huang, Yang Yang, Yang Wang, Chunping Wang, Zhisheng Zhang, Jiarong Xu, Lei Chen, and Michalis Vazirgiannis. "DGraph: A Large-Scale Financial Dataset for Graph Anomaly Detection." *NeurIPS Datasets and Benchmarks*, 2022. [Paper](https://papers.neurips.cc/paper_files/paper/2022/file/8f1918f71972789db39ec0d85bb31110-Paper-Datasets_and_Benchmarks.pdf)
+- **SynFlow**: Hidenori Tanaka, Daniel Kunin, Daniel L. K. Yamins, and Surya Ganguli. "Pruning Neural Networks without Any Data by Iteratively Conserving Synaptic Flow." *NeurIPS*, 2020. [arXiv:2006.05467](https://arxiv.org/abs/2006.05467v3)
+- **GraphSAGE**: William L. Hamilton, Zhitao Ying, and Jure Leskovec. "Inductive Representation Learning on Large Graphs." *NeurIPS*, 2017. [arXiv:1706.02216](https://arxiv.org/abs/1706.02216v4)
+
 
