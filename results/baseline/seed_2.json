@@ -4,7 +4,7 @@
   "sampling": "uniform",
   "sparsity": 0.0,
   "num_params": 37505,
-  "approx_flops": 260198764544.0,
+  "approx_flops": 138461731255.0,
   "best_epoch": 15,
   "best_val": {
     "auprc": 0.03591493634555329,

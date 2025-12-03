@@ -1,0 +1,47 @@
+[
+  {
+    "model_variant": "baseline",
+    "sampling": "uniform",
+    "sparsity": 0.0,
+    "num_params": 37505,
+    "approx_flops": 138461731255.0,
+    "best_test_auprc_mean": 0.038780784890419154,
+    "best_test_auprc_std": 0.0001252918039007016,
+    "best_test_roc_auc_mean": 0.7626099724727691,
+    "best_test_roc_auc_std": 0.0009267056529419802,
+    "best_test_f1_mean": 0.0355865858397585,
+    "best_test_f1_std": 0.0007039449433168162,
+    "num_seeds": 5,
+    "results_dir": "/Users/jameshall/UCLA/260D/project/results/baseline"
+  },
+  {
+    "model_variant": "pruned_magnitude",
+    "sampling": "heuristic",
+    "sparsity": 0.9,
+    "num_params": 37505,
+    "approx_flops": 14408193605.0,
+    "best_test_auprc_mean": 0.037504400994184485,
+    "best_test_auprc_std": 0.000232200335075712,
+    "best_test_roc_auc_mean": 0.7585456208778989,
+    "best_test_roc_auc_std": 0.001169650909581048,
+    "best_test_f1_mean": 0.034757380921317596,
+    "best_test_f1_std": 0.0006067861394655625,
+    "num_seeds": 5,
+    "results_dir": "/Users/jameshall/UCLA/260D/project/results/pruned_magnitude_90"
+  },
+  {
+    "model_variant": "pruned_synflow",
+    "sampling": "heuristic",
+    "sparsity": 0.9,
+    "num_params": 37505,
+    "approx_flops": 14408193605.0,
+    "best_test_auprc_mean": 0.03738908661701039,
+    "best_test_auprc_std": 0.0003522803249302256,
+    "best_test_roc_auc_mean": 0.7581869753566333,
+    "best_test_roc_auc_std": 0.0006972164357139153,
+    "best_test_f1_mean": 0.03503495088416881,
+    "best_test_f1_std": 0.00041316256321397704,
+    "num_seeds": 5,
+    "results_dir": "/Users/jameshall/UCLA/260D/project/results/pruned_synflow_90"
+  }
+]

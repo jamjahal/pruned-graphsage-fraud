@@ -86,7 +86,7 @@ def main() -> None:
     inclusion in reports, and logs where the outputs were saved.
     """
     project_root = Path(__file__).resolve().parents[1]
-    results_root = project_root / "experiments" / "results"
+    results_root = project_root / "results"
 
     aggregated: List[Dict[str, object]] = []
     for variant_dir in sorted(results_root.glob("*")):

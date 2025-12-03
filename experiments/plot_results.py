@@ -32,7 +32,7 @@ def main() -> None:
     dropped directly into the report or presentation deck.
     """
     project_root = Path(__file__).resolve().parents[1]
-    results_root = project_root / "experiments" / "results"
+    results_root = project_root / "results"
     agg_path = results_root / "aggregated_results.json"
 
     if not agg_path.exists():

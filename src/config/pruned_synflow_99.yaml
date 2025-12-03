@@ -1,0 +1,23 @@
+# DGraphFin SynFlow Pruning Configuration (99% Sparsity)
+data_root: "data/DGraphFin2"
+output_dir: "results/pruned_synflow_99"
+model_variant: "pruned_synflow"
+sampling: "heuristic"
+sparsity: 0.99
+
+train:
+  epochs: 20
+  lr: 0.001
+  weight_decay: 0.00005
+  hidden_channels: 128
+  num_layers: 2
+  dropout: 0.2
+  batch_size: 2048
+  num_neighbors: [25, 25]
+  num_hops: 2
+  k_pos: 25
+  k_neg: 5
+  device: "cpu"
+
+seeds: [1, 2, 3, 4, 5]
+
