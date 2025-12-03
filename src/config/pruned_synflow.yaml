@@ -4,7 +4,7 @@
 
 # Data and output settings
 data_root: "data/DGraphFin2"                      # Path to processed DGraphFin2 dataset
-output_dir: "/content/drive/MyDrive/UCLA/260D/pruned_graphsage_project/results/pruned_synflow"   # Directory to save training results
+output_dir: "results/pruned_synflow"   # Directory to save training results
 
 # Model architecture settings
 model_variant: "pruned_synflow"                   # Model type: SynFlow pruning (preserves gradient flow)

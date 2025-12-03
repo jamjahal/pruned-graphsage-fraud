@@ -10,9 +10,16 @@ This script:
 
 from __future__ import annotations
 
+import sys
+import os
+
+# Ensure project root is in python path so we can import from src module
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
 import argparse
 import json
-import os
 from dataclasses import dataclass
 from typing import List, Optional
 

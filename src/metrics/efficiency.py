@@ -46,7 +46,7 @@ def estimate_graphsage_flops(
         return None
 
     # Assume constant hidden dimension across layers (typical for GraphSAGE).
-    hidden_dim = conv_layers[0].out_channels
+    hidden_dim = conv_layers[0]._out_feats
 
     flops = 0.0
     for _ in conv_layers:

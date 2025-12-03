@@ -99,8 +99,6 @@ def build_loaders(graph, cfg: TrainConfig, device: torch.device):
             shuffle=True,
             drop_last=False,
             device=dataloader_device,
-            prefetch_node_feats=["feat"],
-            prefetch_labels=["label"],
         )
     elif cfg.sampling == "heuristic":
         train_loader = HeuristicNeighborLoader(

@@ -1,10 +1,10 @@
-### Core Deep Learning Framework (kept at PyTorch 2.0.0 for stability)
-torch==2.0.0
+### Core Deep Learning Framework
+torch==2.2.2
+# torchvision>=0.19.0
+# torchaudio>=2.4.0
 
-
-### Graph Neural Network Library (DGL, CPU-friendly for M1 + Colab)
-# CPU-only DGL; for GPU Colab you can optionally install a CUDA build at runtime.
-dgl==2.0.0
+### Graph Neural Network Library (DGL)
+dgl==2.2.1
 
 ### Data Processing & Analysis
 numpy>=1.24.0
