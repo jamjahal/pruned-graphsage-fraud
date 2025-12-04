@@ -1,0 +1,29 @@
+{
+  "seed": 3,
+  "model_variant": "pruned_synflow",
+  "sampling": "heuristic",
+  "sparsity": 0.999,
+  "num_params": 37505,
+  "approx_flops": 764265755.0,
+  "best_epoch": 20,
+  "best_val": {
+    "auprc": 0.027028982615011986,
+    "roc_auc": 0.7176085390717278,
+    "accuracy": 0.012650792442157706,
+    "f1": 0.024985498528369177,
+    "precision": 0.012650792442157706,
+    "recall": 1.0,
+    "loss": 2.0567214488983154
+  },
+  "best_test": {
+    "auprc": 0.028007594273247303,
+    "roc_auc": 0.7212225059403143,
+    "accuracy": 0.01265230635335074,
+    "f1": 0.02498845116723784,
+    "precision": 0.01265230635335074,
+    "recall": 1.0,
+    "loss": 2.0521578788757324
+  },
+  "final_val_auprc": 0.027028982615011986,
+  "final_test_auprc": 0.028007594273247303
+}

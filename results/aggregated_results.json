@@ -80,13 +80,13 @@
     "sparsity": 0.99,
     "num_params": 37505,
     "approx_flops": 2003950005.0,
-    "best_test_auprc_mean": 0.01265230635335074,
-    "best_test_auprc_std": 0.0,
-    "best_test_roc_auc_mean": 0.5,
-    "best_test_roc_auc_std": 0.0,
+    "best_test_auprc_mean": 0.015866116316807673,
+    "best_test_auprc_std": 0.0039191112753600744,
+    "best_test_roc_auc_mean": 0.5439458793667566,
+    "best_test_roc_auc_std": 0.049984333902804594,
     "best_test_f1_mean": 0.02498845116723784,
     "best_test_f1_std": 0.0,
-    "num_seeds": 1,
+    "num_seeds": 3,
     "results_dir": "/Users/jameshall/UCLA/260D/project/results/pruned_random_99"
   },
   {
@@ -133,5 +133,20 @@
     "best_test_f1_std": 0.0010029328828107858,
     "num_seeds": 5,
     "results_dir": "/Users/jameshall/UCLA/260D/project/results/pruned_synflow_99"
+  },
+  {
+    "model_variant": "pruned_synflow",
+    "sampling": "heuristic",
+    "sparsity": 0.999,
+    "num_params": 37505,
+    "approx_flops": 764265755.0,
+    "best_test_auprc_mean": 0.0264554051682319,
+    "best_test_auprc_std": 0.003734405220850794,
+    "best_test_roc_auc_mean": 0.7099794855331233,
+    "best_test_roc_auc_std": 0.012954500305748526,
+    "best_test_f1_mean": 0.026911236445857505,
+    "best_test_f1_std": 0.002382539525176145,
+    "num_seeds": 5,
+    "results_dir": "/Users/jameshall/UCLA/260D/project/results/pruned_synflow_999"
   }
 ]
