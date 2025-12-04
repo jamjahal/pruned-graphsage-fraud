@@ -17,11 +17,19 @@ def main() -> None:
     project_root = Path(__file__).resolve().parents[1]
     configs = [
         project_root / "src" / "config" / "baseline.yaml",
-        project_root / "src" / "config" / "pruned_magnitude.yaml",
-        project_root / "src" / "config" / "pruned_synflow.yaml",
+        project_root / "src" / "config" / "pruned_magnitude_90.yaml",
+        project_root / "src" / "config" / "pruned_magnitude_95.yaml",
+        project_root / "src" / "config" / "pruned_magnitude_99.yaml",
+        project_root / "src" / "config" / "pruned_synflow_90.yaml",
+        project_root / "src" / "config" / "pruned_synflow_95.yaml",
+        project_root / "src" / "config" / "pruned_synflow_99.yaml",
     ]
 
     for cfg in configs:
+        if not cfg.exists():
+             print(f"Warning: Config file not found: {cfg}")
+             continue
+
         print(f"Running experiments for config: {cfg}")
         subprocess.run(
             [
@@ -38,5 +46,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
