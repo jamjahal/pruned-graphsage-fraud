@@ -141,7 +141,7 @@ To ensure that our pruning methods (SynFlow, Magnitude) are learning meaningful 
 # TODO:
 * Run random model 95
   * if you have time run random 90, 99 as well
-* ReRun synflow 90 model
+* Run synflow 999
 * Regenerate viz's
   * python experiments/aggregate_results.py
   * python experiments/plot_results.py

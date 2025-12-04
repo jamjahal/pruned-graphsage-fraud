@@ -19,5 +19,5 @@ train:
   k_neg: 5
   device: "cpu"
 
-seeds: [1, 2, 3, 4, 5]
+seeds: [1, 2, 3]
 

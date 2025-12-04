@@ -65,21 +65,22 @@ def main() -> None:
     # -------------------------------------------------------------------------
     # 2. Scatter: AUPRC vs FLOPs
     # -------------------------------------------------------------------------
-    plt.figure(figsize=(8, 6))
-    for l, a, f in zip(labels, auprc_means, flops):
+    plt.figure(figsize=(10, 8))
+    colors = plt.cm.tab10(np.linspace(0, 1, len(labels)))
+
+    for i, (l, a, f) in enumerate(zip(labels, auprc_means, flops)):
         if f is None:
             continue
-        plt.scatter(f, a, label=l, s=100, alpha=0.8)
-        # Offset text slightly to avoid overlap
-        plt.annotate(l, (f, a), xytext=(5, 5), textcoords='offset points', fontsize=8)
-    
+        plt.scatter(f, a, label=l, s=120, alpha=0.8, color=colors[i], edgecolors='black', linewidth=1)
+
     plt.xscale("log")
     plt.xlabel("Approximate FLOPs (log scale)")
     plt.ylabel("Best Test AUPRC")
     plt.title("Efficiency Frontier: AUPRC vs FLOPs")
     plt.grid(True, which="both", ls="-", alpha=0.2)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')  # Move legend outside plot
     plt.tight_layout()
-    plt.savefig(results_root / "auprc_vs_flops.png", dpi=200)
+    plt.savefig(results_root / "auprc_vs_flops.png", dpi=200, bbox_inches='tight')
     plt.close()
 
     # -------------------------------------------------------------------------
