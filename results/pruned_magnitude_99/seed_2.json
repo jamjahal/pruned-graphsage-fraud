@@ -1,0 +1,29 @@
+{
+  "seed": 2,
+  "model_variant": "pruned_magnitude",
+  "sampling": "heuristic",
+  "sparsity": 0.99,
+  "num_params": 37505,
+  "approx_flops": 2003950005.0,
+  "best_epoch": 1,
+  "best_val": {
+    "auprc": 0.012650792442157706,
+    "roc_auc": 0.5,
+    "accuracy": 0.012650792442157706,
+    "f1": 0.024985498528369177,
+    "precision": 0.012650792442157706,
+    "recall": 1.0,
+    "loss": 2.467308282852173
+  },
+  "best_test": {
+    "auprc": 0.01265230635335074,
+    "roc_auc": 0.5,
+    "accuracy": 0.01265230635335074,
+    "f1": 0.02498845116723784,
+    "precision": 0.01265230635335074,
+    "recall": 1.0,
+    "loss": 2.467496871948242
+  },
+  "final_val_auprc": 0.012650792442157706,
+  "final_test_auprc": 0.01265230635335074
+}

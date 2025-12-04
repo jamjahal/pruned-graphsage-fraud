@@ -33,6 +33,7 @@ from src.metrics.efficiency import count_parameters, estimate_graphsage_flops
 from src.metrics.metrics import compute_binary_metrics
 from src.models.graphsage import build_graphsage_for_data
 from src.pruning.magnitude import prune_model_magnitude
+from src.pruning.random import prune_model_random
 from src.pruning.synflow import enforce_masks, prune_model_synflow
 from src.training.train_baseline import (
     TrainConfig as BaseTrainConfig,
@@ -206,6 +207,8 @@ def run_single_seed(exp_cfg: ExperimentConfig, seed: int, autosave_dir: Optional
         model = prune_model_magnitude(model, sparsity=exp_cfg.sparsity)
     elif exp_cfg.model_variant == "pruned_synflow":
         model = prune_model_synflow(model, graph=graph_device, sparsity=exp_cfg.sparsity)
+    elif exp_cfg.model_variant == "pruned_random":
+        model = prune_model_random(model, sparsity=exp_cfg.sparsity)
     elif exp_cfg.model_variant != "baseline":
         raise ValueError(f"Unknown model_variant: {exp_cfg.model_variant}")
 
@@ -259,7 +262,7 @@ def run_single_seed(exp_cfg: ExperimentConfig, seed: int, autosave_dir: Optional
                     loss = criterion(logits, batch_labels)
                     loss.backward()
                     optimizer.step()
-                    if exp_cfg.model_variant in ("pruned_magnitude", "pruned_synflow"):
+                    if exp_cfg.model_variant in ("pruned_magnitude", "pruned_synflow", "pruned_random"):
                         enforce_masks(model)
 
                     batch_size = batch_labels.size(0)
@@ -278,7 +281,7 @@ def run_single_seed(exp_cfg: ExperimentConfig, seed: int, autosave_dir: Optional
                     loss = criterion(logits, targets)
                     loss.backward()
                     optimizer.step()
-                    if exp_cfg.model_variant in ("pruned_magnitude", "pruned_synflow"):
+                    if exp_cfg.model_variant in ("pruned_magnitude", "pruned_synflow", "pruned_random"):
                         enforce_masks(model)
 
                     batch_size = targets.size(0)

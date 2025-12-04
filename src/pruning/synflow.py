@@ -161,16 +161,50 @@ def prune_model_synflow(
     model: nn.Module,
     graph,
     sparsity: float,
+    iterations: int = 100,
 ) -> nn.Module:
     """
     Convenience function to:
     - compute SynFlow-based masks
     - apply them to the model in-place
 
+    If iterations > 1, uses an exponential schedule to reach target sparsity
+    gradually. This is critical for high sparsity (>95%) to avoid layer collapse.
+
     Returns the same model instance for chaining.
     """
-    masks = build_synflow_masks(model, graph, sparsity=sparsity)
-    apply_masks_inplace(model, masks)
+    # If sparsity is 0, do nothing
+    if sparsity <= 0:
+        return model
+
+    # One-shot case
+    if iterations <= 1:
+        masks = build_synflow_masks(model, graph, sparsity=sparsity)
+        apply_masks_inplace(model, masks)
+        return model
+
+    # Iterative SynFlow (Exponential Schedule)
+    # We want to reach target_sparsity in 'iterations' steps.
+    # Schedule: current_density = (final_density)^(step / total_steps)
+    # where density = 1 - sparsity.
+    
+    print(f"Pruning with SynFlow (Iterative): Target Sparsity={sparsity}, Steps={iterations}")
+    
+    for i in range(1, iterations + 1):
+        # Calculate target sparsity for this step
+        # density_t = density_final ^ (i / N)
+        # 1 - s_t = (1 - s_final) ^ (i / N)
+        current_target_sparsity = 1 - (1 - sparsity) ** (i / iterations)
+        
+        # Compute masks for this intermediate target
+        # Note: existing zero weights will have score 0 and stay zero
+        masks = build_synflow_masks(model, graph, sparsity=current_target_sparsity)
+        apply_masks_inplace(model, masks)
+        
+        # Optional: Print progress for very long runs
+        if i % 10 == 0 or i == iterations:
+             print(f"  Step {i}/{iterations}: reached {current_target_sparsity:.4f} sparsity")
+
     return model
 
 
