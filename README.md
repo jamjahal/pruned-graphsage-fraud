@@ -1,6 +1,5 @@
-## Scalable Pruned GraphSAGE for Real-Time Fraud Detection (260D Project)
+## Scalable Pruned GraphSAGE for Real-Time Fraud Detection 
 
-This repository implements the project described in `documentation/260D Project Proposals.md`:
 
 - **Model**: GraphSAGE-based GNN for anomaly / fraud detection
 - **Techniques**: SynFlow pruning (at initialization) + magnitude pruning baseline + heuristic biased neighbor sampling
